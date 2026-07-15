@@ -1,0 +1,29 @@
+# Compliance Advisory & Triage Agent — dependencies
+# Pin versions for reproducibility; update after testing.
+
+# LLM provider (answer generation)
+anthropic==0.30.0
+
+# Ollama client (classification via local llama3.1)
+requests==2.32.3
+
+# Vector store (local persistent)
+chromadb==0.5.3
+
+# Embeddings (local sentence-transformers, no API key required)
+sentence-transformers==3.0.1
+
+# LangGraph orchestration
+langgraph==0.1.19
+langchain-core==0.2.23
+
+# Document loading / chunking
+langchain-community==0.2.10
+langchain-text-splitters==0.2.2
+
+# Streamlit UI
+streamlit==1.36.0
+
+# Utilities
+python-dotenv==1.0.1
+pydantic==2.8.2

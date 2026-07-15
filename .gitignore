@@ -1,0 +1,25 @@
+# Virtual environment
+.venv/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# Environment / secrets
+.env
+
+# ChromaDB local store
+data/chroma_db/
+
+# Audit log (runtime data, not source)
+data/audit_log.jsonl
+
+# Ollama logs
+/tmp/ollama.log
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
