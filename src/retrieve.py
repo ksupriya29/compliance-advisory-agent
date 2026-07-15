@@ -239,7 +239,9 @@ def _generate_answer(
     except (requests.Timeout, requests.HTTPError) as exc:
         return None, [], f"ollama_error:{exc}"
 
-    if raw.strip().upper() == "CANNOT_ANSWER" or "CANNOT_ANSWER" in raw[:50].upper():
+    # Treat CANNOT_ANSWER as a hard no-match regardless of where in the
+    # response it appears — the model sometimes adds preamble before it.
+    if "CANNOT_ANSWER" in raw.upper():
         return None, [], "cannot_answer"
 
     citations = _parse_citations(raw)

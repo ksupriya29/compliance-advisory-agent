@@ -18,7 +18,7 @@ from enum import Enum
 from typing import Optional
 
 from src.classify import ClassificationResult
-from src.retrieve import RetrievalResult
+from src.retrieve import AnswerResult
 
 
 # ---------------------------------------------------------------------------
@@ -67,7 +67,7 @@ class GovernanceDecision:
 # ---------------------------------------------------------------------------
 
 def apply_rules(
-    retrieval: RetrievalResult,
+    retrieval: AnswerResult,
     classification: ClassificationResult,
 ) -> GovernanceDecision:
     """
@@ -78,14 +78,17 @@ def apply_rules(
         2. classification.stakes == "high" → ESCALATE
         3. classification.stakes == "medium" → ESCALATE_WITH_ANSWER
         4. classification.stakes == "low" → ALLOW
-
-    TODO:
-        1. if retrieval.no_match: return _refuse("No matching policy found")
-        2. if classification.stakes == "high": return _escalate(classification)
-        3. if classification.stakes == "medium": return _escalate_with_answer(retrieval, classification)
-        4. return _allow(retrieval)
     """
-    raise NotImplementedError
+    if retrieval.no_match:
+        return _refuse("No matching policy found")
+
+    if classification.stakes == "high":
+        return _escalate(classification)
+
+    if classification.stakes == "medium":
+        return _escalate_with_answer(retrieval, classification)
+
+    return _allow(retrieval)
 
 
 # ---------------------------------------------------------------------------
@@ -93,58 +96,42 @@ def apply_rules(
 # ---------------------------------------------------------------------------
 
 def _refuse(reason: str) -> GovernanceDecision:
-    """
-    Build a REFUSE decision.
-
-    TODO: return GovernanceDecision(
-              routing=Routing.REFUSE,
-              final_answer=REFUSE_MESSAGE,
-              escalation_reason=reason,
-              add_to_review_queue=False,
-          )
-    """
-    raise NotImplementedError
+    """Build a REFUSE decision."""
+    return GovernanceDecision(
+        routing=Routing.REFUSE,
+        final_answer=REFUSE_MESSAGE,
+        escalation_reason=reason,
+        add_to_review_queue=False,
+    )
 
 
 def _escalate(classification: ClassificationResult) -> GovernanceDecision:
-    """
-    Build a full ESCALATE decision (answer withheld).
-
-    TODO: return GovernanceDecision(
-              routing=Routing.ESCALATE,
-              final_answer=ESCALATE_MESSAGE,
-              escalation_reason=f"stakes=high, topic={classification.topic}",
-              add_to_review_queue=True,
-          )
-    """
-    raise NotImplementedError
+    """Build a full ESCALATE decision (answer withheld)."""
+    return GovernanceDecision(
+        routing=Routing.ESCALATE,
+        final_answer=ESCALATE_MESSAGE,
+        escalation_reason=f"stakes=high, topic={classification.topic}",
+        add_to_review_queue=True,
+    )
 
 
 def _escalate_with_answer(
-    retrieval: RetrievalResult,
+    retrieval: AnswerResult,
     classification: ClassificationResult,
 ) -> GovernanceDecision:
-    """
-    Build an ESCALATE_WITH_ANSWER decision (answer returned with disclaimer).
-
-    TODO: return GovernanceDecision(
-              routing=Routing.ESCALATE_WITH_ANSWER,
-              final_answer=retrieval.answer + ESCALATE_WITH_ANSWER_DISCLAIMER,
-              escalation_reason=f"stakes=medium, topic={classification.topic}",
-              add_to_review_queue=True,
-          )
-    """
-    raise NotImplementedError
+    """Build an ESCALATE_WITH_ANSWER decision (answer returned with disclaimer)."""
+    return GovernanceDecision(
+        routing=Routing.ESCALATE_WITH_ANSWER,
+        final_answer=(retrieval.answer or "") + ESCALATE_WITH_ANSWER_DISCLAIMER,
+        escalation_reason=f"stakes=medium, topic={classification.topic}",
+        add_to_review_queue=True,
+    )
 
 
-def _allow(retrieval: RetrievalResult) -> GovernanceDecision:
-    """
-    Build an ALLOW decision (answer returned as-is).
-
-    TODO: return GovernanceDecision(
-              routing=Routing.ALLOW,
-              final_answer=retrieval.answer,
-              add_to_review_queue=False,
-          )
-    """
-    raise NotImplementedError
+def _allow(retrieval: AnswerResult) -> GovernanceDecision:
+    """Build an ALLOW decision (answer returned as-is)."""
+    return GovernanceDecision(
+        routing=Routing.ALLOW,
+        final_answer=retrieval.answer or "",
+        add_to_review_queue=False,
+    )

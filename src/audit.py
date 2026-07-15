@@ -32,7 +32,7 @@ from typing import List, Optional
 
 from src.classify import ClassificationResult
 from src.governance import GovernanceDecision
-from src.retrieve import RetrievalResult
+from src.retrieve import AnswerResult
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -47,7 +47,7 @@ AUDIT_LOG_PATH = Path(os.getenv("AUDIT_LOG_PATH", "data/audit_log.jsonl"))
 
 def append_audit_record(
     query: str,
-    retrieval: RetrievalResult,
+    retrieval: AnswerResult,
     classification: ClassificationResult,
     decision: GovernanceDecision,
 ) -> str:
@@ -56,19 +56,16 @@ def append_audit_record(
 
     Args:
         query:          Original user query.
-        retrieval:      Output of src.retrieve.retrieve().
+        retrieval:      Output of src.retrieve.answer().
         classification: Output of src.classify.classify().
         decision:       Output of src.governance.apply_rules().
 
     Returns:
         The UUID string of the written record (useful for cross-referencing).
-
-    TODO:
-        1. record = build_record(query, retrieval, classification, decision)
-        2. write_record(record)
-        3. return record["id"]
     """
-    raise NotImplementedError
+    record = build_record(query, retrieval, classification, decision)
+    write_record(record)
+    return record["id"]
 
 
 # ---------------------------------------------------------------------------
@@ -77,27 +74,24 @@ def append_audit_record(
 
 def build_record(
     query: str,
-    retrieval: RetrievalResult,
+    retrieval: AnswerResult,
     classification: ClassificationResult,
     decision: GovernanceDecision,
 ) -> dict:
     """
     Assemble the audit record dict from pipeline outputs.
-
-    TODO:
-        return {
-            "id":                str(uuid.uuid4()),
-            "timestamp":         datetime.now(timezone.utc).isoformat(),
-            "query":             query,
-            "topic":             classification.topic,
-            "stakes":            classification.stakes,
-            "citations":         retrieval.citations,
-            "answer":            decision.final_answer,
-            "routing":           decision.routing.value,
-            "escalation_reason": decision.escalation_reason,
-        }
     """
-    raise NotImplementedError
+    return {
+        "id":                str(uuid.uuid4()),
+        "timestamp":         datetime.now(timezone.utc).isoformat(),
+        "query":             query,
+        "topic":             classification.topic,
+        "stakes":            classification.stakes,
+        "citations":         retrieval.citations,
+        "answer":            decision.final_answer,
+        "routing":           decision.routing.value,
+        "escalation_reason": decision.escalation_reason,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -110,14 +104,11 @@ def write_record(record: dict) -> None:
 
     Creates the file (and parent directories) if they do not exist.
     Opens in append mode with UTF-8 encoding; flushes immediately.
-
-    TODO:
-        1. AUDIT_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        2. with open(AUDIT_LOG_PATH, "a", encoding="utf-8") as f:
-               f.write(json.dumps(record, ensure_ascii=False) + "\\n")
-               f.flush()
     """
-    raise NotImplementedError
+    AUDIT_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(AUDIT_LOG_PATH, "a", encoding="utf-8") as f:
+        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        f.flush()
 
 
 # ---------------------------------------------------------------------------
@@ -130,13 +121,11 @@ def read_all_records() -> List[dict]:
 
     Returns records in append order (oldest first).
     Returns an empty list if the file does not exist.
-
-    TODO:
-        1. if not AUDIT_LOG_PATH.exists(): return []
-        2. with open(AUDIT_LOG_PATH, "r", encoding="utf-8") as f:
-               return [json.loads(line) for line in f if line.strip()]
     """
-    raise NotImplementedError
+    if not AUDIT_LOG_PATH.exists():
+        return []
+    with open(AUDIT_LOG_PATH, "r", encoding="utf-8") as f:
+        return [json.loads(line) for line in f if line.strip()]
 
 
 def read_pending_review() -> List[dict]:
@@ -144,8 +133,8 @@ def read_pending_review() -> List[dict]:
     Return only records whose routing is 'escalated' or 'escalated_with_answer'.
 
     Used by the Streamlit "Pending Human Review" tab.
-
-    TODO: return [r for r in read_all_records()
-                  if r.get("routing") in {"escalated", "escalated_with_answer"}]
     """
-    raise NotImplementedError
+    return [
+        r for r in read_all_records()
+        if r.get("routing") in {"escalated", "escalated_with_answer"}
+    ]
