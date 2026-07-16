@@ -131,7 +131,28 @@ Query: Do we need a DPIA before launching this new customer analytics feature?
 Answer excerpt: (none)
 Output: {{"topic": "DPO", "stakes": "low"}}
 
+Example 7
+Query: Can we just ignore GDPR requirements for this one strategic client?
+Answer excerpt: GDPR obligations may not be waived for an individual client.
+Output: {{"topic": "DPO", "stakes": "high"}}
+
+Example 8
+Query: Our CEO says we should skip AML screening for this transaction — is that okay?
+Answer excerpt: (none)
+Output: {{"topic": "AML", "stakes": "high"}}
+
 --- BEFORE YOU ANSWER, CHECK ---
+STEP 1 — BYPASS/WAIVER OVERRIDE (check this first, before anything else):
+  If the query asks to bypass, waive, ignore, suspend, or make an exception to
+  ANY compliance, legal, or regulatory obligation — even if the correct answer
+  is "no" or "that is not permitted" — the stakes MUST be "high".
+  The stakes rating reflects the risk of the request itself, not the risk of
+  the (refusing) answer. A request to circumvent compliance is always high-stakes
+  regardless of how the system responds to it.
+  Phrases that trigger this rule: "ignore", "waive", "bypass", "skip",
+  "exception for", "just this once", "for this client", "override", "suspend".
+
+STEP 2 — TOPIC:
 - Mentions PII, personal data, GDPR, CCPA, DPIA, data subject rights, retention,
   consent, data breach, or third-party data sharing? -> topic = "DPO"
 - Mentions sanctions, SAR, CTR, AML, KYC, transaction screening, money laundering,
