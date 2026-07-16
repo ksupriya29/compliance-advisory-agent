@@ -22,7 +22,8 @@ langchain-community==0.2.10
 langchain-text-splitters==0.2.2
 
 # Streamlit UI
-streamlit==1.36.0
+streamlit==1.59.2
+pandas==3.0.3
 
 # Utilities
 python-dotenv==1.0.1
