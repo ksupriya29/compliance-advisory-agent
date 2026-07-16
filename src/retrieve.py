@@ -10,10 +10,8 @@ retrieve(query, top_k=3) -> list[ChunkMatch]
 answer(query, top_k=3) -> AnswerResult
     1. Calls retrieve().
     2. If best score < CONFIDENCE_THRESHOLD  →  no-match result.
-    3. Otherwise builds a grounded prompt and calls Ollama (llama3.2).
-       The LLM must cite §section IDs for every claim. If the chunks don't
-       contain the answer it must say so — it is NOT allowed to use
-       general knowledge.
+    3. Otherwise builds a grounded prompt and calls Groq (llama-3.1-8b-instant)
+       via the OpenAI-compatible chat/completions endpoint.
     4. Returns AnswerResult with answer text, §section citations, and score.
 """
 
@@ -34,9 +32,10 @@ from src.ingest import get_chroma_client, get_or_create_collection
 # Configuration
 # ---------------------------------------------------------------------------
 
-OLLAMA_BASE_URL       = os.getenv("OLLAMA_BASE_URL",   "http://localhost:11434")
-OLLAMA_MODEL          = os.getenv("OLLAMA_MODEL",      "llama3.2")
-OLLAMA_TIMEOUT        = int(os.getenv("OLLAMA_TIMEOUT", "120"))
+GROQ_API_KEY  = os.getenv("GROQ_API_KEY", "")
+GROQ_BASE_URL = os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
+GROQ_MODEL    = os.getenv("GROQ_MODEL",    "llama-3.1-8b-instant")
+GROQ_TIMEOUT  = int(os.getenv("GROQ_TIMEOUT", "180"))   # seconds; covers 62s 429 back-off + request
 
 # Cosine similarity threshold (0–1).  ChromaDB returns *distance* in [0, 2]
 # for cosine space; we convert: similarity = 1 - (distance / 2).
@@ -216,17 +215,48 @@ def _parse_citations(answer_text: str) -> list[str]:
     return list(seen.keys())
 
 
-def _call_ollama(prompt: str) -> str:
-    """POST to Ollama /api/generate and return the response text."""
-    url = f"{OLLAMA_BASE_URL}/api/generate"
-    payload = {
-        "model":  OLLAMA_MODEL,
-        "prompt": prompt,
-        "stream": False,
+def _call_groq(system_prompt: str, user_message: str) -> str:
+    """
+    Call Groq's OpenAI-compatible chat/completions endpoint.
+
+    Sends ANSWER_SYSTEM_PROMPT as the system message and the context block +
+    question as the user message.  Using separate roles lets the model
+    distinguish grounding instructions from the actual query.
+
+    Retries once on 429 (rate limit) with a 62-second back-off, which clears
+    Groq's per-minute window on the free developer tier.
+
+    Raises:
+        requests.ConnectionError: Network unreachable.
+        requests.Timeout:         Request exceeded GROQ_TIMEOUT seconds.
+        requests.HTTPError:       Non-2xx response from Groq (after retry).
+    """
+    import time
+
+    url = f"{GROQ_BASE_URL}/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type":  "application/json",
     }
-    resp = requests.post(url, json=payload, timeout=OLLAMA_TIMEOUT)
-    resp.raise_for_status()
-    return resp.json().get("response", "").strip()
+    payload = {
+        "model":       GROQ_MODEL,
+        "messages":    [
+            {"role": "system", "content": system_prompt},
+            {"role": "user",   "content": user_message},
+        ],
+        "temperature": 0,      # deterministic; factual grounding requires consistency
+        "max_tokens":  512,
+    }
+    for attempt in range(2):
+        resp = requests.post(url, json=payload, headers=headers, timeout=GROQ_TIMEOUT)
+        if resp.status_code == 429 and attempt == 0:
+            retry_after = int(resp.headers.get("retry-after", 62))
+            time.sleep(retry_after)
+            continue
+        resp.raise_for_status()
+        return resp.json()["choices"][0]["message"]["content"].strip()
+    resp.raise_for_status()   # re-raise if still 429 after retry
+    return ""
 
 
 def _generate_answer(
@@ -242,19 +272,18 @@ def _generate_answer(
         it cannot answer from the provided excerpts.
     """
     context_block = _build_context_block(chunks)
-    prompt = (
-        f"{ANSWER_SYSTEM_PROMPT}\n\n"
+    user_message = (
         f"--- POLICY EXCERPTS ---\n{context_block}\n\n"
         f"--- QUESTION ---\n{query}\n\n"
         f"Answer (cite §section IDs inline and list them in Citations:):"
     )
 
     try:
-        raw = _call_ollama(prompt)
+        raw = _call_groq(ANSWER_SYSTEM_PROMPT, user_message)
     except requests.ConnectionError:
-        return None, [], "ollama_unavailable"
+        return None, [], "groq_unavailable"
     except (requests.Timeout, requests.HTTPError) as exc:
-        return None, [], f"ollama_error:{exc}"
+        return None, [], f"groq_error:{exc}"
 
     # Treat CANNOT_ANSWER as no-match only when the model genuinely cannot
     # answer — i.e. CANNOT_ANSWER appears at the very start of the response

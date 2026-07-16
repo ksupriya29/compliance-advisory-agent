@@ -5,8 +5,8 @@ Responsibilities:
 - Topic classification: assign one of {DPO, AML, Legal, Other}
 - Stakes classification: assign one of {low, medium, high}
 
-Both classifications are performed in a single Ollama (llama3.2) call using
-the JSON-constrained output mode so the response is always parseable.
+Both classifications are performed in a single Groq (llama-3.1-8b-instant) call using
+the OpenAI-compatible chat/completions endpoint so the response is always parseable.
 
 Topic definitions:
     DPO   — Data protection, privacy, GDPR/CCPA, PII handling, customer data,
@@ -38,9 +38,10 @@ import requests
 # Configuration
 # ---------------------------------------------------------------------------
 
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_MODEL    = os.getenv("OLLAMA_MODEL", "llama3.2")
-OLLAMA_TIMEOUT  = int(os.getenv("OLLAMA_TIMEOUT", "60"))   # seconds
+GROQ_API_KEY  = os.getenv("GROQ_API_KEY", "")
+GROQ_BASE_URL = os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
+GROQ_MODEL    = os.getenv("GROQ_MODEL",    "llama-3.1-8b-instant")
+GROQ_TIMEOUT  = int(os.getenv("GROQ_TIMEOUT", "180"))   # seconds; covers 62s 429 back-off + request
 
 TopicLabel  = Literal["DPO", "AML", "Legal", "Other"]
 StakesLabel = Literal["low", "medium", "high"]
@@ -274,33 +275,55 @@ def build_classification_prompt(query: str, answer_excerpt: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Ollama call
+# Groq API call
 # ---------------------------------------------------------------------------
 
-def call_ollama(prompt: str) -> str:
+def call_groq(prompt: str) -> str:
     """
-    Send a prompt to the Ollama /api/generate endpoint and return the
-    raw response text.
+    Send the classification prompt to Groq's OpenAI-compatible
+    chat/completions endpoint and return the raw response text.
 
-    Uses ``format="json"`` to instruct Ollama to constrain its output to
-    valid JSON — this significantly reduces parse failures with llama3.1.
+    The entire prompt (instructions + few-shot examples + input) is sent as a
+    single user message.  Groq's response_format={"type":"json_object"} mode
+    constrains output to valid JSON, replicating the behaviour of Ollama's
+    ``format="json"`` option.
+
+    Retries once on 429 (rate limit) with a 62-second back-off, which clears
+    Groq's per-minute window on the free developer tier.
 
     Raises:
-        requests.HTTPError:   If the Ollama server returns a non-2xx status.
-        requests.Timeout:     If the request exceeds OLLAMA_TIMEOUT seconds.
-        requests.ConnectionError: If Ollama is not running.
+        requests.HTTPError:       Non-2xx response from Groq (after retry).
+        requests.Timeout:         Request exceeded GROQ_TIMEOUT seconds.
+        requests.ConnectionError: Network unreachable.
     """
-    url = f"{OLLAMA_BASE_URL}/api/generate"
-    payload = {
-        "model":  OLLAMA_MODEL,
-        "prompt": prompt,
-        "format": "json",   # constrain output to JSON
-        "stream": False,    # return full response at once
+    import time
+
+    url = f"{GROQ_BASE_URL}/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type":  "application/json",
     }
-    response = requests.post(url, json=payload, timeout=OLLAMA_TIMEOUT)
+    payload = {
+        "model":           GROQ_MODEL,
+        "messages":        [{"role": "user", "content": prompt}],
+        "response_format": {"type": "json_object"},
+        "temperature":     0,        # deterministic; classification needs consistency
+        "max_tokens":      64,       # topic+stakes JSON is tiny
+    }
+    for attempt in range(2):
+        response = requests.post(url, json=payload, headers=headers, timeout=GROQ_TIMEOUT)
+        if response.status_code == 429 and attempt == 0:
+            retry_after = int(response.headers.get("retry-after", 62))
+            time.sleep(retry_after)
+            continue
+        response.raise_for_status()
+        return response.json()["choices"][0]["message"]["content"]
     response.raise_for_status()
-    data = response.json()
-    return data.get("response", "")
+    return ""
+
+
+# Keep the old name as an alias so any external callers aren't broken.
+call_ollama = call_groq
 
 
 # ---------------------------------------------------------------------------
@@ -359,7 +382,7 @@ def parse_classification_response(raw: str) -> dict:
 
 def classify(query: str, answer_excerpt: str = "") -> ClassificationResult:
     """
-    Classify a compliance query by topic and stakes using llama3.2 via Ollama.
+    Classify a compliance query by topic and stakes using llama-3.1-8b-instant via Groq.
 
     Pipeline:
         1. Run a Python keyword pre-filter on (query + answer_excerpt).
@@ -391,24 +414,24 @@ def classify(query: str, answer_excerpt: str = "") -> ClassificationResult:
     prompt = build_classification_prompt(query, answer_excerpt)
 
     try:
-        raw = call_ollama(prompt)
+        raw = call_groq(prompt)
     except requests.ConnectionError:
         return ClassificationResult(
             topic=prefilter_topic or "Other",
             stakes="high",
-            raw_response="ERROR: Ollama not reachable at " + OLLAMA_BASE_URL,
+            raw_response="ERROR: Groq API unreachable",
         )
     except requests.Timeout:
         return ClassificationResult(
             topic=prefilter_topic or "Other",
             stakes="high",
-            raw_response="ERROR: Ollama request timed out",
+            raw_response="ERROR: Groq request timed out",
         )
     except requests.HTTPError as exc:
         return ClassificationResult(
             topic=prefilter_topic or "Other",
             stakes="high",
-            raw_response=f"ERROR: Ollama HTTP {exc.response.status_code}",
+            raw_response=f"ERROR: Groq HTTP {exc.response.status_code}",
         )
 
     validated = parse_classification_response(raw)
