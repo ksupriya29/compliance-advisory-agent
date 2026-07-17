@@ -1,27 +1,31 @@
 # Compliance Advisory & Triage Agent — dependencies
-# Pin versions for reproducibility; update after testing.
 
-# Groq API client (HTTP calls via requests — no SDK needed)
+# HTTP requests
 requests==2.32.3
 
-# Vector store (local persistent)
+# Vector database
 chromadb==0.5.3
 
-# Embeddings (local sentence-transformers, no API key required)
+# Local embeddings
 sentence-transformers==3.0.1
 
 # LangGraph orchestration
 langgraph==0.1.19
 langchain-core==0.2.23
 
-# Document loading / chunking
+# Document processing
 langchain-community==0.2.10
 langchain-text-splitters==0.2.2
 
 # Streamlit UI
 streamlit==1.59.2
+
+# Data processing
 pandas==2.2.2
 numpy==1.26.4
-# Utilities
+
+# Environment variables
 python-dotenv==1.0.1
+
+# Data validation
 pydantic==2.8.2
