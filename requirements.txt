@@ -20,8 +20,8 @@ langchain-text-splitters==0.2.2
 
 # Streamlit UI
 streamlit==1.59.2
-pandas==3.0.3
-
+pandas==2.2.2
+numpy==1.26.4
 # Utilities
 python-dotenv==1.0.1
 pydantic==2.8.2
