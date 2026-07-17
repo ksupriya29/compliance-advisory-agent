@@ -259,6 +259,59 @@ def _call_groq(system_prompt: str, user_message: str) -> str:
     return ""
 
 
+# ---------------------------------------------------------------------------
+# Unicode sanitisation
+# ---------------------------------------------------------------------------
+
+# Characters the LLM commonly produces that cannot be encoded as Windows
+# cp1252.  Mapped to safe ASCII/Latin-1 equivalents so that Streamlit's
+# rendering pipeline never hits a UnicodeEncodeError on Windows.
+_UNICODE_REPLACEMENTS: list[tuple[str, str]] = [
+    ("\u2192", "->"),    # →  right arrow
+    ("\u2190", "<-"),    # ←  left arrow
+    ("\u2194", "<->"),   # ↔  left-right arrow
+    ("\u21d2", "=>"),    # ⇒  double right arrow
+    ("\u2014", "--"),    # —  em dash
+    ("\u2013", "-"),     # –  en dash
+    ("\u2018", "'"),     # '  left single quote
+    ("\u2019", "'"),     # '  right single quote
+    ("\u201c", '"'),     # "  left double quote
+    ("\u201d", '"'),     # "  right double quote
+    ("\u2022", "*"),     # •  bullet
+    ("\u2026", "..."),   # …  ellipsis
+    ("\u00b7", "."),     # ·  middle dot
+    ("\u26a0", "[!]"),   # ⚠  warning sign
+    ("\ufe0f", ""),      # variation selector-16 (invisible modifier after emoji)
+    ("\u00a9", "(c)"),   # ©
+    ("\u00ae", "(R)"),   # ®
+    ("\u2122", "(TM)"),  # ™
+]
+
+
+def _sanitize_llm_output(text: str) -> str:
+    """
+    Replace Unicode characters that are not encodable as Windows cp1252.
+
+    The LLM (llama running on Groq) regularly outputs typographic characters
+    such as → (U+2192) and — (U+2014).  On Windows, Streamlit's rendering
+    pipeline uses the system default encoding (cp1252) for some I/O paths,
+    causing UnicodeEncodeError / [Errno 22] when those characters appear.
+
+    This function applies a known-bad-character table first, then falls back
+    to a cp1252 encode-with-replace pass to catch any remaining codepoints.
+
+    Args:
+        text: Raw LLM output string.
+
+    Returns:
+        A string safe to encode as cp1252.
+    """
+    for char, replacement in _UNICODE_REPLACEMENTS:
+        text = text.replace(char, replacement)
+    # Final safety net: encode to cp1252 replacing unknowns, then decode back.
+    return text.encode("cp1252", errors="replace").decode("cp1252")
+
+
 def _generate_answer(
     query: str,
     chunks: list[ChunkMatch],
@@ -305,6 +358,10 @@ def _generate_answer(
     answer_body = re.sub(
         r"\s*CANNOT_ANSWER\s*", " ", answer_body, flags=re.IGNORECASE
     ).strip()
+
+    # Sanitise Unicode characters that Windows cp1252 cannot encode.
+    # The LLM regularly produces → — ' " etc. which crash Streamlit on Windows.
+    answer_body = _sanitize_llm_output(answer_body)
 
     return answer_body, citations, None
 

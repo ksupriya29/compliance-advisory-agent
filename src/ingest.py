@@ -230,7 +230,7 @@ def ingest_all() -> dict:
         chunks = chunk_document(doc)
         n = upsert_chunks(collection, chunks)
         total_chunks += n
-        print(f"  [ingest] {doc['source']}  →  {n} chunks")
+        print(f"  [ingest] {doc['source']}  ->  {n} chunks")
 
     print(f"\n[ingest] Done. {len(docs)} file(s), {total_chunks} chunk(s) upserted.")
     return {"files": len(docs), "chunks": total_chunks}

@@ -44,7 +44,7 @@ ESCALATE_MESSAGE = (
 )
 
 ESCALATE_WITH_ANSWER_DISCLAIMER = (
-    "\n\n⚠️  This response involves medium-stakes compliance risk and is pending "
+    "\n\n[!] WARNING: This response involves medium-stakes compliance risk and is pending "
     "human review. Treat it as preliminary guidance only."
 )
 
