@@ -121,13 +121,13 @@ def retrieve(query: str, top_k: int = 3) -> list[ChunkMatch]:
     collection = get_or_create_collection(client)
 
     # Guard: empty collection returns an error from ChromaDB
-    count = collection.count()
+    count = int(collection.count())   # cast to plain int — ChromaDB count() can return numpy int64
     if count == 0:
         return []
 
     results = collection.query(
         query_texts=[query],
-        n_results=min(top_k, count),
+        n_results=int(min(top_k, count)),   # n_results must be a plain Python int
         include=["documents", "metadatas", "distances"],
     )
 

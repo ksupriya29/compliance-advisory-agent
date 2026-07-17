@@ -28,6 +28,64 @@ from src.audit import read_all_records, read_pending_review
 
 load_dotenv()
 
+
+def _ensure_db_ready() -> None:
+    """
+    Guarantee the ChromaDB vector store is populated before any query runs.
+
+    Called once per Streamlit process via st.cache_resource so it only
+    executes on cold start, not on every page reload.
+
+    Recovery logic (in order):
+        1. If the collection is healthy and non-empty  → nothing to do.
+        2. If the collection is empty (DB wiped/first run) → ingest.
+        3. If ChromaDB raises ANY exception (corrupt DB, version mismatch,
+           seq_id type error, etc.) → delete data/chroma_db/ entirely and
+           re-ingest from scratch.  This handles the 'object of type int has
+           no len()' SQLite seq_id corruption automatically.
+    """
+    import shutil
+    from pathlib import Path
+    from src.ingest import (
+        get_chroma_client,
+        get_or_create_collection,
+        ingest_all,
+        CHROMA_PERSIST_DIR,
+    )
+
+    def _ingest_fresh() -> None:
+        summary = ingest_all()
+        st.toast(
+            f"Policy DB built: {summary['files']} files, {summary['chunks']} chunks",
+            icon="📚",
+        )
+
+    try:
+        client = get_chroma_client()
+        collection = get_or_create_collection(client)
+        count = int(collection.count())
+        if count == 0:
+            # Empty collection — first deploy or DB was wiped
+            _ingest_fresh()
+    except Exception:
+        # Corrupt / incompatible DB — delete and rebuild
+        try:
+            if Path(CHROMA_PERSIST_DIR).exists():
+                shutil.rmtree(str(CHROMA_PERSIST_DIR))
+        except Exception:
+            pass  # best-effort; ingest_all will recreate it
+        _ingest_fresh()
+
+
+@st.cache_resource(show_spinner="Initialising policy database…")
+def _bootstrap_db() -> None:
+    """Thin cache wrapper so _ensure_db_ready() runs only once per process."""
+    _ensure_db_ready()
+
+
+# Run DB bootstrap before anything else touches ChromaDB.
+_bootstrap_db()
+
 st.set_page_config(
     page_title="Compliance Advisory & Triage Agent",
     page_icon="⚖️",

@@ -1,9 +1,16 @@
-# Compliance Advisory & Triage Agent — dependencies
+# Compliance Advisory & Triage Agent — pinned dependencies
+# ALL versions are pinned to the exact tested set.
+# Do NOT run `pip install --upgrade` without re-testing and re-running:
+#   python -m src.ingest   (always required after a chromadb version change)
+#
+# To install:
+#   pip install -r requirements.txt
 
 # HTTP requests
 requests==2.32.3
 
-# Vector database
+# Vector database — PINNED: changing this version requires deleting
+# data/chroma_db/ and re-running `python -m src.ingest`
 chromadb==0.5.3
 
 # Local embeddings
